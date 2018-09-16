@@ -30,17 +30,19 @@
 */
 
 #define COMPDATE __DATE__ __TIME__
+#define build_str  "Version: " __DATE__ " " __TIME__;
 #define MODEBUTTON 0										// Button pin on the esp for selecting modes. D3 for the Wemos!
 #define DHTPIN 14
 #define DHTTYPE DHT22
-char thingsboardServer[] = "172.31.0.15";
+
+char* thingsboardServer = "172.31.0.15";
 
 uint8_t MAC_array[6];
 char MAC_char[18];
 
 int MessureTime=60000;
 
-DHT dht(DHTPIN, DHTTYPE);
+
 
 
 int status = WL_IDLE_STATUS;
@@ -51,33 +53,37 @@ PubSubClient client(wifiClient);
 
 #include <IOTAppStory.h>								// IotAppStory.com library
 IOTAppStory IAS(COMPDATE, MODEBUTTON);	// Initialize IotAppStory
-
+DHT dht(DHTPIN, DHTTYPE);
 
 
 // ================================================ SETUP ================================================
 void setup() {
   Serial.begin(115200);
-  IAS.begin('P');         // Optional parameter: What to do with EEPROM on First boot of the app? 'F' Fully erase | 'P' Partial erase(default) | 'L' Leave intact
-	
 
-  //-------- Your Setup starts from here ---------------
-  dht.begin();
-  delay(10);
+  lastSend = 0;
     WiFi.macAddress(MAC_array);
     for (int i = 0; i < sizeof(MAC_array); ++i){
       sprintf(MAC_char,"%s%02x",MAC_char,MAC_array[i]);
     }
-  client.setServer( thingsboardServer, 1883 );
-  lastSend = 0;
-   String Name = "Temperatur_"; 
-    Name += MAC_char;
- IAS.preSetDeviceName(Name.c_str());                         // preset deviceName this is also your MDNS responder: http://iasblink.local
-
-
-  //IAS.addField(thingsboardServer, "MQTT_Server", 15);                   // These fields are added to the config wifimanager and saved to eeprom. Updated values are returned to the original variable.
-//  IAS.addField(MessureTime, "MessureTime(mS)", 5, 'N');         // reference to org variable | field label value | max char return
- IAS.setCallHome(true);                                    // Set to true to enable calling home frequently (disabled by default)
+  String Name = "Temperatur_"; 
+  Name += MAC_char;
+  IAS.preSetDeviceName(Name.c_str());                         // preset deviceName this is also your MDNS responder: http://iasblink.local
+  IAS.begin('P');         // Optional parameter: What to do with EEPROM on First boot of the app? 'F' Fully erase | 'P' Partial erase(default) | 'L' Leave intact
+	IAS.setCallHome(true);                                    // Set to true to enable calling home frequently (disabled by default)
   IAS.setCallHomeInterval(7200);        
+  IAS.addField(thingsboardServer, "MQTT_Server", 12,'L');                     // These fields are added to the config wifimanager and saved to eeprom. Updated values are returned to the original variable.
+//  IAS.addField(MessureTime, "MessureTime(mS)");                       // reference to org variable | field label value | max char return
+ // IAS.addField(DHTPIN,"DHTPin",2,'P');
+  client.setServer( thingsboardServer, 1883 );
+
+  //-------- Your Setup starts from here ---------------
+  dht.begin();
+  delay(10);
+  
+
+
+    getAndSendTemperatureAndHumidityData(); //get the first data without waiting to long
+ 
 }
 
 
@@ -97,7 +103,18 @@ void loop() {
 
 void getAndSendTemperatureAndHumidityData()
 {
+  char attributes[100];
+  String topic = "ESP/" ;
+
   reconnect();
+  Serial.println("sending version data as a kind of keep-alive signal");
+ topic = "ESP/" ;
+  topic += MAC_char;
+  topic += "/version";
+  String version = build_str;
+   version.toCharArray( attributes, 100 );
+  client.publish( topic.c_str(), attributes );
+  
   Serial.println("Collecting temperature data.");
 
   // Reading temperature or humidity takes about 250 milliseconds!
@@ -134,8 +151,7 @@ void getAndSendTemperatureAndHumidityData()
  
 
   // Send payload
-  char attributes[100];
-  String topic = "ESP/" ;
+  topic = "ESP/" ;
   topic += MAC_char;
   topic += "/TEMP";
   temperature.toCharArray( attributes, 100 );
@@ -145,6 +161,8 @@ topic = "ESP/" ;
   topic += "/HUM";
    humidity.toCharArray( attributes, 100 );
   client.publish( topic.c_str(), attributes );
+
+
   
   Serial.println( attributes );
 
